@@ -23,7 +23,9 @@ docker run --rm --platform linux/amd64 \
 
 mv lambda_package_source/lambda_package.zip .
 
-mv lambda_package.zip pipeline-tf/
+find lambda_package_source/ -mindepth 1 -maxdepth 1 \
+  ! -name 'lambda_handler.py' \
+  ! -name 'requirements.txt' \
+  -exec rm -rf {} +
 
-rm -rf lambda_package_source
 
