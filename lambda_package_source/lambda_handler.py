@@ -1,21 +1,20 @@
 import requests
 import json
+import time
 import base64
 import pandas as pd
 from datetime import datetime
 import os
+import s3fs
 
-# Nota: Você precisará do s3fs/pyarrow para df.to_parquet('s3://...')
-
-# O nome do seu bucket.
-BUCKET_NAME = "data-pipeline-488070626945-data-lake-bucket"
+BUCKET_NAME = "PUT THE BUCKET NAME HERE"
 
 
 def build_encoded_params(page_number):
     params = {
         "language": "pt-br",
         "pageNumber": page_number,
-        "pageSize": 20,
+        "pageSize": 120,
         "index": "IBOV",
         "segment": "1",
     }
@@ -28,7 +27,18 @@ def fetch_page(page_number):
         "https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/"
         f"GetPortfolioDay/{encoded}"
     )
-    response = requests.get(url)
+
+    print(url)
+
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/100.0.4896.127 Safari/537.36"
+    )
+
+    headers = {"User-Agent": user_agent}
+
+    response = requests.get(url, headers=headers)
     response.raise_for_status()
     return response.json()
 
@@ -37,6 +47,8 @@ def lambda_handler(event, context):
     """
     Ponto de entrada principal que coleta, processa e salva no S3.
     """
+    fs = s3fs.S3FileSystem()
+
     all_rows = []
     first_response = fetch_page(1)
     all_rows.extend(first_response["results"])
@@ -49,6 +61,8 @@ def lambda_handler(event, context):
         carteira_date = datetime.now()
 
     for page in range(2, total_pages + 1):
+        # Espera para evitar rate limiting (Erro 520)
+        time.sleep(3)
         resp = fetch_page(page)
         all_rows.extend(resp["results"])
 
@@ -58,11 +72,6 @@ def lambda_handler(event, context):
     df = df[cols_to_keep].copy()
     df["data_referencia"] = carteira_date.strftime("%Y-%m-%d")
 
-    # ----------------------------------------------------
-    # CONSTRUÇÃO DO CAMINHO E S3
-    # ----------------------------------------------------
-
-    # Estrutura de Partição: raw/ibov/ano=YYYY/mes=MM/dia=DD/arquivo.parquet
     partition_path = (
         f"raw/ibov/ano={carteira_date.year}/"
         f"mes={carteira_date.month:02d}/"
@@ -71,8 +80,7 @@ def lambda_handler(event, context):
 
     s3_path = f"s3://{BUCKET_NAME}/{partition_path}ibov_carteira.parquet"
 
-    # Salva o DataFrame como Parquet no S3
-    df.to_parquet(s3_path, index=False)
+    df.to_parquet(s3_path, index=False, filesystem=fs)
 
     return {
         "statusCode": 200,
