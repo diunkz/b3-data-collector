@@ -1,9 +1,5 @@
 #run in the root folder:
 
-mkdir lambda_package_source
-
-cp requirements.txt lambda_handler.py lambda_package_source/
-
 docker run --rm --platform linux/amd64 \
   -v "$(pwd)/lambda_package_source":/local \
   python:3.13-slim-bookworm \
