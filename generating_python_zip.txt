@@ -1,0 +1,29 @@
+#run in the root folder:
+
+mkdir lambda_package_source
+
+cp requirements.txt lambda_handler.py lambda_package_source/
+
+docker run --rm --platform linux/amd64 \
+  -v "$(pwd)/lambda_package_source":/local \
+  python:3.13-slim-bookworm \
+  /bin/bash -c "
+    apt-get update && \
+    apt-get install -y zip && \
+    pip install --no-cache-dir -r /local/requirements.txt -t /local && \
+    cd /local && \
+    find . -name '__pycache__' -type d -exec rm -r {} + && \
+    find . -name '*.dist-info' -type d -exec rm -r {} + && \
+    rm -rf bin && \
+    rm -rf numpy/doc numpy/tests && \
+    find . -name 'tests' -type d -exec rm -rf {} + && \
+    zip -r lambda_package.zip . && \
+    echo 'BUILD_COMPLETE'
+  "
+
+mv lambda_package_source/lambda_package.zip .
+
+mv lambda_package.zip pipeline-tf/
+
+rm -rf lambda_package_source
+
